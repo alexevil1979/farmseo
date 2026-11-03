@@ -1,0 +1,26 @@
+{
+  "name": "@farm/workers",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Farm Chrome worker: Redis queue, isolated profiles, stealth, internal HTTP",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "worker": "node index.js",
+    "scenario:run": "node scenario/cli.js run",
+    "scenario:validate": "node scenario/cli.js validate",
+    "scenario:list": "node scenario/cli.js list",
+    "captcha:test": "node lib/captcha/test-e2e.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.2",
+    "puppeteer": "^24.2.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

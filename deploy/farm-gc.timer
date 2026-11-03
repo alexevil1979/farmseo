@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Farm GC every 2 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=farm-gc.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

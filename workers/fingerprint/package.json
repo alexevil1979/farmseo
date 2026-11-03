@@ -1,0 +1,16 @@
+{
+  "name": "@farm/fingerprint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CDP fingerprint applicator for Farm Chrome workers",
+  "main": "apply.js",
+  "scripts": {
+    "verify": "node verify-cdp.js"
+  },
+  "peerDependencies": {
+    "puppeteer": "^25.16.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

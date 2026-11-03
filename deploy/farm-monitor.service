@@ -1,0 +1,24 @@
+[Unit]
+Description=Farm monitor — metrics every 15s + alert engine + Telegram
+Documentation=file:///opt/farm/docs/operations.md
+After=network.target mysql.service redis-server.service redis.service farm-api.service
+Wants=redis-server.service farm-api.service
+
+[Service]
+Type=simple
+User=farm
+Group=farm
+WorkingDirectory=/opt/farm
+EnvironmentFile=-/opt/farm/.env
+ExecStart=/usr/bin/php /opt/farm/farm mon:watch --sleep=15
+Restart=always
+RestartSec=3
+Nice=10
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farm-monitor
+
+[Install]
+WantedBy=multi-user.target

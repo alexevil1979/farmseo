@@ -1,0 +1,320 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Farm\Db\Connection;
+use Farm\Db\Migrator;
+
+$root = dirname(__DIR__, 2);
+
+/** @var array $config */
+$config = require $root . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+
+$argv = $_SERVER['argv'] ?? [];
+array_shift($argv);
+$command = $argv[0] ?? 'help';
+$args = array_slice($argv, 1);
+
+$exit = match (true) {
+    $command === 'migrate' => cmdMigrate($config, $root),
+    $command === 'migrate:rollback' => cmdRollback($config, $root, $args),
+    $command === 'migrate:status' => cmdMigrateStatus($config, $root),
+    $command === 'seed' => cmdSeed($config, $root, $args),
+    str_starts_with($command, 'proxy:') => cmdProxy($root, $command, $args),
+    str_starts_with($command, 'fp:') => cmdFp($root, $command, $args),
+    str_starts_with($command, 'scenario:') => cmdScenario($root, $command, $args),
+    str_starts_with($command, 'sched:')
+        || str_starts_with($command, 'governor:')
+        || str_starts_with($command, 'gc:') => cmdSched($root, $command, $args),
+    str_starts_with($command, 'mon:') => cmdMon($root, $command, $args),
+    str_starts_with($command, 'token:') => cmdToken($root, $command, $args),
+    str_starts_with($command, 'sms:') => cmdSms($root, $command, $args),
+    in_array($command, ['help', '--help', '-h'], true) => cmdHelp(),
+    default => (static function () use ($command): int {
+        fwrite(STDERR, "Unknown command: {$command}\n");
+        cmdHelp();
+
+        return 1;
+    })(),
+};
+
+exit($exit);
+
+/** @param array $config */
+function cmdMigrate(array $config, string $root): int
+{
+    $db = bootstrapDb($config);
+    $migrator = new Migrator($db, $root . DIRECTORY_SEPARATOR . 'migrations');
+    $applied = $migrator->migrate();
+    if ($applied === []) {
+        echo "Nothing to migrate.\n";
+    } else {
+        foreach ($applied as $file) {
+            echo "Migrated: {$file}\n";
+        }
+        echo 'Applied ' . count($applied) . " migration(s).\n";
+    }
+
+    return 0;
+}
+
+/**
+ * @param array $config
+ * @param list<string> $args
+ */
+function cmdRollback(array $config, string $root, array $args): int
+{
+    $steps = 1;
+    foreach ($args as $arg) {
+        if (preg_match('/^--steps=(\d+)$/', $arg, $m)) {
+            $steps = max(1, (int) $m[1]);
+        }
+    }
+
+    $db = bootstrapDb($config);
+    $migrator = new Migrator($db, $root . DIRECTORY_SEPARATOR . 'migrations');
+    $rolled = $migrator->rollback($steps);
+    if ($rolled === []) {
+        echo "Nothing to rollback.\n";
+    } else {
+        foreach ($rolled as $file) {
+            echo "Rolled back: {$file}\n";
+        }
+        echo 'Rolled back ' . count($rolled) . " migration(s).\n";
+    }
+
+    return 0;
+}
+
+/** @param array $config */
+function cmdMigrateStatus(array $config, string $root): int
+{
+    $db = bootstrapDb($config);
+    $migrator = new Migrator($db, $root . DIRECTORY_SEPARATOR . 'migrations');
+    $migrator->ensureMigrationsTable();
+    $applied = $migrator->appliedMigrations();
+    $files = $migrator->discoverMigrationFiles();
+
+    foreach ($files as $file) {
+        $mark = isset($applied[$file]) ? 'Y' : 'N';
+        echo "[{$mark}] {$file}\n";
+    }
+
+    return 0;
+}
+
+/**
+ * @param array $config
+ * @param list<string> $args
+ */
+function cmdSeed(array $config, string $root, array $args): int
+{
+    $options = [
+        'accounts' => 100,
+        'proxies' => 20,
+        'scenarios' => 3,
+        'tasks' => 50,
+    ];
+    foreach ($args as $arg) {
+        if (preg_match('/^--accounts=(\d+)$/', $arg, $m)) {
+            $options['accounts'] = (int) $m[1];
+        } elseif (preg_match('/^--proxies=(\d+)$/', $arg, $m)) {
+            $options['proxies'] = (int) $m[1];
+        } elseif (preg_match('/^--scenarios=(\d+)$/', $arg, $m)) {
+            $options['scenarios'] = (int) $m[1];
+        } elseif (preg_match('/^--tasks=(\d+)$/', $arg, $m)) {
+            $options['tasks'] = (int) $m[1];
+        }
+    }
+
+    $db = bootstrapDb($config);
+    /** @var callable $seeder */
+    $seeder = require $root . DIRECTORY_SEPARATOR . 'seeds' . DIRECTORY_SEPARATOR . 'demo.php';
+    $result = $seeder($db, $options);
+
+    echo "Seed complete:\n";
+    foreach ($result as $key => $value) {
+        echo "  {$key}: {$value}\n";
+    }
+
+    return 0;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdProxy(string $root, string $command, array $args): int
+{
+    // Re-build argv for proxy.php: [proxy.php, proxy:cmd|cmd, ...args]
+    $proxyCmd = str_starts_with($command, 'proxy:') ? $command : 'proxy:' . $command;
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'proxy.php', $proxyCmd],
+        $args
+    );
+    $_SERVER['FARM_PROXY_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'proxy.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdFp(string $root, string $command, array $args): int
+{
+    $fpCmd = str_starts_with($command, 'fp:') ? $command : 'fp:' . $command;
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'fp.php', $fpCmd],
+        $args
+    );
+    $_SERVER['FARM_FP_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'fp.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdScenario(string $root, string $command, array $args): int
+{
+    $scenarioCmd = str_starts_with($command, 'scenario:') ? $command : 'scenario:' . $command;
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'scenario.php', $scenarioCmd],
+        $args
+    );
+    $_SERVER['FARM_SCENARIO_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'scenario.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdSched(string $root, string $command, array $args): int
+{
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'sched.php', $command],
+        $args
+    );
+    $_SERVER['FARM_SCHED_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'sched.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdMon(string $root, string $command, array $args): int
+{
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'mon.php', $command],
+        $args
+    );
+    $_SERVER['FARM_MON_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'mon.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdToken(string $root, string $command, array $args): int
+{
+    $tokenCmd = str_starts_with($command, 'token:') ? $command : 'token:' . $command;
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'token.php', $tokenCmd],
+        $args
+    );
+    $_SERVER['FARM_TOKEN_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'token.php';
+
+    return (int) $code;
+}
+
+/**
+ * @param list<string> $args
+ */
+function cmdSms(string $root, string $command, array $args): int
+{
+    $smsCmd = str_starts_with($command, 'sms:') ? $command : 'sms:' . $command;
+    $_SERVER['argv'] = array_merge(
+        [$root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'sms.php', $smsCmd],
+        $args
+    );
+    $_SERVER['FARM_SMS_AS_LIBRARY'] = true;
+
+    /** @var int $code */
+    $code = require $root . DIRECTORY_SEPARATOR . 'src' . DIRECTORY_SEPARATOR . 'Console' . DIRECTORY_SEPARATOR . 'sms.php';
+
+    return (int) $code;
+}
+
+function cmdHelp(): int
+{
+    echo <<<'HELP'
+Farm CLI — data layer + proxy pool + fingerprints + scenarios + scheduler + API
+
+Usage:
+  php farm <command> [options]
+
+Commands:
+  migrate                 Apply pending migrations
+  migrate:rollback        Roll back last batch (--steps=N)
+  migrate:status          Show migration status
+  seed                    Fill demo data (idempotent)
+                          --accounts=100 --proxies=20 --scenarios=3 --tasks=50
+  proxy:import <file>     Import proxies (host:port:user:pass)
+  proxy:check [--all]     Health-check proxies (ok|slow|dead)
+  proxy:rotate            Replace dead assigned proxies (same geo)
+  proxy:stats             Pool statistics
+  fp:generate --account=  Generate fingerprint for account
+  fp:assign --group=      Assign fingerprints to account group
+  fp:validate --all       Validate fingerprint consistency
+  scenario:run            Run JSON scenario in Chrome
+                          --account=ID --scenario=warmup|pf|service [--day=N] [--fast]
+  scenario:sync           Upsert scenarios/*.json → DB
+  scenario:event          Append runs_events row (internal)
+  sched:run [--loop]      Fire schedules + enqueue farm:q:tasks (governor-aware)
+  sched:stats             Queue / task / governor snapshot
+  governor:status         JSON governor status
+  gc:run                  Stale tasks, locks, SingletonLock, orphan Chrome
+  mon:watch [--once]      Metrics (cpu/ram/disk/chrome) + alerts every 15s
+  mon:test-alert          Send Telegram test alert (TG_TOKEN + TG_CHAT_ID)
+  token:issue             Issue API token (--user=ID --name=LABEL)
+  token:revoke            Revoke token (--id=ID | --token=PLAIN)
+  token:list              List tokens (--user=ID)
+  sms:rent                Rent SMS number [--account=ID] [--service=ya]
+  sms:code                Wait for SMS code (--phone=ID)
+  sms:release             Release number (--phone=ID)
+  sms:cancel              Cancel activation (--phone=ID)
+  help                    Show this help
+
+HELP;
+
+    return 0;
+}
+
+/** @param array $config */
+function bootstrapDb(array $config): Connection
+{
+    Connection::reset();
+
+    return Connection::getInstance($config['db']);
+}

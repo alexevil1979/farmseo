@@ -1,0 +1,33 @@
+{
+    "name": "farm/core",
+    "description": "Farm data layer — MySQL schema, PDO, repositories, migrator, seeder",
+    "type": "project",
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Farm\\": "src/"
+        },
+        "classmap": [
+            "src/Services/GeoProvider.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Farm\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

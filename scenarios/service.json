@@ -1,0 +1,122 @@
+{
+  "name": "Yandex Services",
+  "type": "service",
+  "version": 1,
+  "description": "Визит в сервисы Яндекса: Почта, Погода, Новости, Маркет, Картинки (+ опционально видео).",
+  "defaults": {
+    "geo": "ru",
+    "device": "desktop",
+    "limits": {
+      "dwell_sec_min": 3,
+      "dwell_sec_max": 15
+    }
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "url": "https://yandex.ru/"
+    },
+    {
+      "type": "dwell",
+      "min": 1,
+      "max": 3
+    },
+    {
+      "type": "visit_service",
+      "service": "mail"
+    },
+    {
+      "type": "scroll",
+      "min": 150,
+      "max": 400
+    },
+    {
+      "type": "dwell",
+      "min": 4,
+      "max": 12
+    },
+    {
+      "type": "visit_service",
+      "service": "weather"
+    },
+    {
+      "type": "dwell",
+      "min": 3,
+      "max": 10
+    },
+    {
+      "type": "scroll",
+      "min": 200,
+      "max": 500
+    },
+    {
+      "type": "visit_service",
+      "service": "news"
+    },
+    {
+      "type": "read_article",
+      "min": 2,
+      "max": 6,
+      "on_fail": "continue"
+    },
+    {
+      "type": "branch",
+      "branch": { "op": "truthy", "value": true },
+      "then": [
+        {
+          "type": "visit_service",
+          "service": "market"
+        },
+        {
+          "type": "dwell",
+          "min": 3,
+          "max": 9
+        },
+        {
+          "type": "scroll",
+          "min": 250,
+          "max": 700
+        }
+      ],
+      "else": []
+    },
+    {
+      "type": "visit_service",
+      "service": "Картинки"
+    },
+    {
+      "type": "dwell",
+      "min": 3,
+      "max": 8
+    },
+    {
+      "type": "mouse_move"
+    },
+    {
+      "type": "loop",
+      "min": 1,
+      "max": 2,
+      "steps": [
+        {
+          "type": "watch_video",
+          "url": "https://yandex.ru/video/",
+          "min": 5,
+          "max": 20,
+          "weight": 0.7,
+          "on_fail": "continue"
+        }
+      ]
+    },
+    {
+      "type": "captcha_solve",
+      "optional": true,
+      "min": 3,
+      "max": 10,
+      "on_fail": "continue"
+    },
+    {
+      "type": "screenshot",
+      "name": "service-end.png"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+[Unit]
+Description=Farm scheduler (cron → tasks → farm:q:tasks + governor)
+Documentation=file:///opt/farm/docs/operations.md
+After=network.target mysql.service redis-server.service redis.service farm-api.service
+Wants=redis-server.service farm-api.service
+
+[Service]
+Type=simple
+User=farm
+Group=farm
+WorkingDirectory=/opt/farm
+EnvironmentFile=-/opt/farm/.env
+ExecStart=/usr/bin/php /opt/farm/farm sched:run --loop --sleep=5
+Restart=always
+RestartSec=3
+Nice=5
+# Hard cap concurrent PHP children isn't needed; governor limits Chrome separately
+LimitNOFILE=65535
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farm-scheduler
+
+[Install]
+WantedBy=multi-user.target

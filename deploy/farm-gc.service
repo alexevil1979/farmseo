@@ -1,0 +1,16 @@
+[Unit]
+Description=Farm GC — stale tasks, locks, SingletonLock, orphan Chrome
+Documentation=file:///opt/farm/docs/operations.md
+After=network.target mysql.service redis-server.service redis.service
+
+[Service]
+Type=oneshot
+User=farm
+Group=farm
+WorkingDirectory=/opt/farm
+EnvironmentFile=-/opt/farm/.env
+ExecStart=/usr/bin/php /opt/farm/farm gc:run
+Nice=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=farm-gc

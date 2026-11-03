@@ -1,0 +1,13 @@
+.git
+.phpunit.cache
+e2e/out
+storage/profiles/**
+storage/screenshots/**
+storage/cookies/**
+storage/logs/**
+!storage/**/.gitkeep
+# vendor + workers/node_modules stay in context for offline e2e image builds
+# (Packagist/npm often unreachable from Docker Desktop/WSL).
+node_modules
+.env
+tests

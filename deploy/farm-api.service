@@ -1,0 +1,21 @@
+[Unit]
+Description=Farm API — Apache 2.4 + PHP 8.3-FPM stack gate
+Documentation=file:///opt/farm/docs/operations.md
+Requires=apache2.service php8.3-fpm.service mysql.service redis-server.service
+After=network-online.target apache2.service php8.3-fpm.service mysql.service redis-server.service
+Wants=network-online.target redis-server.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/opt/farm/.env
+# Gate unit: HTTP is served by Apache + php-fpm; this stays active after boot.
+ExecStartPre=/bin/systemctl start apache2
+ExecStartPre=/bin/systemctl start php8.3-fpm
+ExecStart=/bin/bash -c 'systemctl is-active --quiet apache2 && systemctl is-active --quiet php8.3-fpm'
+ExecReload=/bin/systemctl reload apache2
+ExecReload=/bin/systemctl reload php8.3-fpm
+ExecStop=/bin/true
+
+[Install]
+WantedBy=multi-user.target

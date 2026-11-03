@@ -1,0 +1,147 @@
+{
+  "name": "PF Desktop",
+  "type": "pf",
+  "version": 1,
+  "description": "Поиск → прогрев выдачи (2–4 конкурента) → клик по цели → длинное чтение → скролл до конца → 2–4 внутренних перехода → возврат.",
+  "defaults": {
+    "geo": "ru",
+    "device": "desktop",
+    "limits": {
+      "dwell_sec_min": 3,
+      "dwell_sec_max": 12,
+      "max_scrolls": 15,
+      "click_depth": 4
+    }
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "url": "https://yandex.ru/"
+    },
+    {
+      "type": "dwell",
+      "min": 1,
+      "max": 3
+    },
+    {
+      "type": "search_yandex",
+      "query": "{{keyword}}"
+    },
+    {
+      "type": "dwell",
+      "min": 2,
+      "max": 5
+    },
+    {
+      "type": "scroll",
+      "min": 300,
+      "max": 900,
+      "times": 2
+    },
+    {
+      "type": "loop",
+      "min": 2,
+      "max": 4,
+      "steps": [
+        {
+          "type": "click_serp_position",
+          "min": 1,
+          "max": 8,
+          "on_fail": "continue"
+        },
+        {
+          "type": "dwell",
+          "min": 2,
+          "max": 6
+        },
+        {
+          "type": "scroll",
+          "min": 200,
+          "max": 600
+        },
+        {
+          "type": "back",
+          "on_fail": "continue"
+        },
+        {
+          "type": "dwell",
+          "min": 1,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "type": "branch",
+      "branch": { "var": "target_url", "op": "exists" },
+      "then": [
+        {
+          "type": "goto",
+          "url": "{{target_url}}"
+        }
+      ],
+      "else": [
+        {
+          "type": "click_serp_position",
+          "position": 1,
+          "on_fail": "abort"
+        }
+      ]
+    },
+    {
+      "type": "dwell",
+      "min": 1,
+      "max": 2
+    },
+    {
+      "type": "read_article",
+      "min": 6,
+      "max": 14,
+      "dwell_min": 1,
+      "dwell_max": 4,
+      "until_end": true
+    },
+    {
+      "type": "scroll",
+      "min": 400,
+      "max": 1200,
+      "times": 3
+    },
+    {
+      "type": "loop",
+      "min": 2,
+      "max": 4,
+      "steps": [
+        {
+          "type": "internal_click",
+          "optional": true,
+          "on_fail": "continue"
+        },
+        {
+          "type": "dwell",
+          "min": 2,
+          "max": 8
+        },
+        {
+          "type": "read_article",
+          "min": 2,
+          "max": 5,
+          "weight": 0.7,
+          "on_fail": "continue"
+        }
+      ]
+    },
+    {
+      "type": "back",
+      "on_fail": "continue"
+    },
+    {
+      "type": "back",
+      "weight": 0.5,
+      "on_fail": "continue"
+    },
+    {
+      "type": "screenshot",
+      "name": "pf-end.png"
+    }
+  ]
+}

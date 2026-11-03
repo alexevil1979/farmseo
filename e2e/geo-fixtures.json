@@ -1,0 +1,56 @@
+{
+  "default": {
+    "ip": "10.42.0.1",
+    "country": "RU",
+    "city": "Moscow",
+    "region": "Moscow",
+    "asn": null,
+    "org": "E2E Stub ISP",
+    "timezone": "Europe/Moscow",
+    "type": "res"
+  },
+  "by_host": {
+    "proxy:8888": {
+      "ip": "10.42.0.8",
+      "country": "RU",
+      "city": "Moscow",
+      "region": "Moscow",
+      "asn": null,
+      "org": "E2E Tinyproxy Stub",
+      "timezone": "Europe/Moscow",
+      "type": "res"
+    },
+    "127.0.0.1:8888": {
+      "ip": "127.0.0.1",
+      "country": "RU",
+      "city": "Moscow",
+      "region": "Moscow",
+      "asn": null,
+      "org": "E2E Local Stub",
+      "timezone": "Europe/Moscow",
+      "type": "res"
+    }
+  },
+  "by_country": {
+    "RU": {
+      "ip": "10.42.0.1",
+      "country": "RU",
+      "city": "Moscow",
+      "region": "Moscow",
+      "asn": null,
+      "org": "E2E RU Stub",
+      "timezone": "Europe/Moscow",
+      "type": "res"
+    },
+    "DE": {
+      "ip": "10.42.0.49",
+      "country": "DE",
+      "city": "Berlin",
+      "region": "BE",
+      "asn": null,
+      "org": "E2E DE Stub",
+      "timezone": "Europe/Berlin",
+      "type": "res"
+    }
+  }
+}

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Live-view — Farm</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../css/admin.css" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .lv-page {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(46, 125, 98, 0.18), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(30, 64, 90, 0.22), transparent 50%),
+        var(--bg, #0f1419);
+      color: var(--text, #e8eee9);
+      font-family: "IBM Plex Sans", sans-serif;
+    }
+    .lv-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line, #243038);
+      background: rgba(12, 18, 22, 0.85);
+      backdrop-filter: blur(8px);
+    }
+    .lv-bar h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .lv-bar .mono { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; opacity: 0.85; }
+    .lv-bar .spacer { flex: 1; }
+    .lv-stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 12px 16px 16px;
+      gap: 10px;
+    }
+    .lv-frame-wrap {
+      flex: 1;
+      min-height: 480px;
+      border: 1px solid var(--line, #243038);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+    }
+    .lv-frame-wrap iframe {
+      width: 100%;
+      height: 100%;
+      min-height: 480px;
+      border: 0;
+      background: #000;
+    }
+    .lv-status { font-size: 0.85rem; opacity: 0.8; }
+    .lv-status.err { color: #e57373; }
+    .lv-shot-preview {
+      max-height: 160px;
+      border-radius: 6px;
+      border: 1px solid var(--line, #243038);
+      display: none;
+    }
+    .lv-shot-preview.show { display: block; }
+  </style>
+  <script src="../config.js"></script>
+</head>
+<body>
+  <div class="lv-page">
+    <header class="lv-bar">
+      <h1>Live-view</h1>
+      <span id="meta" class="mono">—</span>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-sm" id="btnBack">← Аккаунт</button>
+      <button type="button" class="btn btn-sm" id="btnRefresh">Обновить поток</button>
+      <button type="button" class="btn btn-sm btn-primary" id="btnShot">Скриншот сейчас</button>
+      <button type="button" class="btn btn-sm btn-danger" id="btnStop">Стоп</button>
+    </header>
+    <main class="lv-stage">
+      <div id="status" class="lv-status">Подключение…</div>
+      <div class="lv-frame-wrap">
+        <iframe id="frame" title="noVNC live-view" allow="clipboard-read; clipboard-write"></iframe>
+      </div>
+      <img id="shot" class="lv-shot-preview" alt="screenshot preview" />
+    </main>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "apiBase": "/api/v1",
+  "appName": "Farm",
+  "refreshIntervalMs": 5000,
+  "chartRefreshMs": 8000,
+  "tablePollMs": 6000,
+  "perPageDefault": 50,
+  "bulkConcurrency": 10
+}

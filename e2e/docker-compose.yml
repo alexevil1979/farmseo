@@ -1,0 +1,89 @@
+# Reproducible E2E — real Chrome on clean Ubuntu 24.04 (no install.sh, no systemd).
+#
+#   bash e2e/run.sh
+#
+# Services:
+#   farm  — apache/php-fpm/mysql/redis/chrome/xvfb/novnc under supervisor
+#   site  — nginx + 3 static pages (local warmup target)
+#   proxy — tinyproxy :8888 without auth
+
+name: farm-e2e
+
+services:
+  site:
+    image: nginx:1.27-alpine
+    networks: [e2e]
+    volumes:
+      - ./site/html:/usr/share/nginx/html:ro
+      - ./site/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  proxy:
+    build:
+      context: ./proxy
+    networks: [e2e]
+    # tinyproxy listens on 8888, no authentication
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8888/ || exit 0"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  farm:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile
+    init: true
+    # Mandatory for Chrome in container (WSL/e2e): do not lower below 1gb.
+    shm_size: "1gb"
+    mem_limit: 4g
+    networks: [e2e]
+    ports:
+      - "18080:80"
+      - "16080:6080"
+    environment:
+      CHROME_EXTRA_ARGS: "--no-sandbox --disable-dev-shm-usage --disable-gpu"
+      # Default e2e concurrency cap (preflight enforces <=2 on host .env too)
+      MAX_CHROME: "2"
+      GEO_PROVIDER: stub
+      RANDOM_SEED: "42"
+      DISPLAY: ":99"
+      E2E_SITE_HOST: site
+      E2E_PROXY_HOST: proxy
+      E2E_PROXY_PORT: "8888"
+    volumes:
+      - ..:/src:ro
+      # Live overlays so display/VNC fixes apply without rebuilding apt layers
+      - ../workers:/opt/farm/workers:ro
+      - ../e2e/entrypoint.sh:/usr/local/sbin/farm-e2e-entrypoint.sh:ro
+      # RW: kill-test does sed -i on farm-worker.conf autorestart
+      - ../e2e/supervisor.d:/etc/supervisor/conf.d
+      - farm-profiles:/opt/farm/storage/profiles
+      - farm-storage:/opt/farm/storage
+    depends_on:
+      site:
+        condition: service_healthy
+      proxy:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /var/lib/farm-e2e/ready && curl -sf http://127.0.0.1/api/v1/health >/dev/null",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 60s
+
+networks:
+  e2e:
+    driver: bridge
+
+volumes:
+  farm-profiles:
+  farm-storage:
