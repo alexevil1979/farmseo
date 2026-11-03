@@ -15,4 +15,6 @@
 /workers/node_modules/
 /e2e/out/
 /e2e/_deploy_ssh.py
+/deploy/_*.py
+/deploy/_*.sh
 /.deploy-secrets*

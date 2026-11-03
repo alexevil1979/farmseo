@@ -1,0 +1,11 @@
+---
+description: Always push Farm SEO code to github.com/alexevil1979/farmseo
+alwaysApply: true
+---
+
+# Git remote for this project
+
+- Canonical remote: `farmseo` → `git@github.com:alexevil1979/farmseo.git`
+- After meaningful commits, push to `farmseo` (`git push farmseo HEAD`).
+- Do not push this tree to unrelated remotes (`origin`/`worksearch`/`ozon`/etc.).
+- Production path on VPS: `/ssd/www/farm`, domain `farm.1tlt.ru`. Other `/ssd/www/*` sites must not be modified.
