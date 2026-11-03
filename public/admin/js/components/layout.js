@@ -6,6 +6,7 @@ const NAV = [
     items: [
       { route: 'dashboard', label: 'Дашборд', ico: '▣' },
       { route: 'monitoring', label: 'Мониторинг', ico: '◉' },
+      { route: 'docs', label: 'Документация', ico: '✉' },
     ],
   },
   {

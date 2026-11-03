@@ -1,5 +1,5 @@
 import { Api } from './api.js';
-import { navigate, onRoute, startRouter } from './router.js';
+import { navigate, onRoute, startRouter, parseHash } from './router.js';
 import { renderShell } from './components/layout.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -15,10 +15,12 @@ import { renderReports } from './pages/reports.js';
 import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
 import { renderTokens } from './pages/tokens.js';
+import { renderDocs } from './pages/docs.js';
 import { toast } from './components/toast.js';
 
 const TITLES = {
   dashboard: 'Дашборд',
+  docs: 'Документация',
   accounts: 'Аккаунты',
   proxies: 'Прокси',
   scenarios: 'Сценарии',
@@ -37,6 +39,7 @@ const TITLES = {
 
 const PAGES = {
   dashboard: (el) => renderDashboard(el),
+  docs: (el, s) => renderDocs(el, s),
   accounts: (el, s) => renderAccounts(el, { id: s.id }),
   proxies: (el) => renderProxies(el),
   scenarios: (el, s) => renderScenarios(el, { id: s.id }),
@@ -109,12 +112,7 @@ async function boot() {
 
   async function renderCurrent() {
     if (!shell) return;
-    const state = (() => {
-      const raw = (window.location.hash || '#/dashboard').replace(/^#\/?/, '');
-      const [path] = raw.split('?');
-      const parts = path.split('/').filter(Boolean);
-      return { route: parts[0] || 'dashboard', id: parts[1] || null, rest: parts.slice(1) };
-    })();
+    const state = parseHash();
 
     const route = PAGES[state.route] ? state.route : 'dashboard';
     if (!PAGES[state.route]) {
@@ -122,10 +120,7 @@ async function boot() {
       return;
     }
 
-    const key = `${route}/${state.id || ''}`;
-    if (key === lastRouteKey && cleanup) {
-      // still re-render on hash change of same path with query — skip only exact same
-    }
+    const key = `${route}/${state.id || ''}/${state.params?.q || ''}`;
     lastRouteKey = key;
 
     shell.setActive(route);
