@@ -25,12 +25,16 @@ export function openModal({ title, body, footer, wide = false, onClose } = {}) {
 
   function close(result) {
     backdrop.remove();
+    document.removeEventListener('keydown', onKey);
     if (onClose) onClose(result);
   }
 
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) close(null);
-  });
+  // Do not close on outside click — accidental mouse-up outside the form
+  // must not discard filled create/edit dialogs (accounts and the rest).
+  function onKey(e) {
+    if (e.key === 'Escape') close(null);
+  }
+  document.addEventListener('keydown', onKey);
 
   return { close, bodyEl, foot, modal };
 }
