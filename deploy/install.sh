@@ -142,9 +142,16 @@ mkdir -p \
   /var/backups/farm \
   /var/log/farm
 
+# Web-accessible screenshots (admin panel /storage/screenshots/...)
+ln -sfn "${FARM_ROOT}/storage" "${FARM_ROOT}/public/storage"
+
 chown -R "${FARM_USER}:${FARM_GROUP}" "${FARM_ROOT}"
 chmod 750 "${FARM_ROOT}"
 chmod -R u+rwX,g+rX,o-rwx "${FARM_ROOT}/storage"
+# Apache (www-data) must read PNGs via public/storage symlink
+chmod o+rX "${FARM_ROOT}/storage" "${FARM_ROOT}/storage/screenshots" || true
+find "${FARM_ROOT}/storage/screenshots" -type d -exec chmod o+rx {} \; 2>/dev/null || true
+find "${FARM_ROOT}/storage/screenshots" -type f -name '*.png' -exec chmod o+r {} \; 2>/dev/null || true
 chmod 755 "${FARM_ROOT}/public"
 chmod +x "${FARM_ROOT}/farm" "${FARM_ROOT}/src/Console/farm" \
   "${FARM_ROOT}/deploy/install.sh" "${FARM_ROOT}/deploy/backup.sh" 2>/dev/null || true

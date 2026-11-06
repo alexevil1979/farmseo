@@ -219,6 +219,9 @@ final class Application
         $this->router->get('/api/v1/tasks/{id}/events', [TasksController::class, 'events'], [
             $auth(), $rl(), $rbac('tasks', 'read'),
         ]);
+        $this->router->get('/api/v1/tasks/{id}/runs', [TasksController::class, 'runs'], [
+            $auth(), $rl(), $rbac('tasks', 'read'),
+        ]);
         $this->crud('api_tokens', ApiTokensController::class, $api);
         $this->crud('campaigns', CampaignsController::class, $api);
         $this->crud('keywords', KeywordsController::class, $api);

@@ -356,6 +356,7 @@ async function main() {
           chrome_ram_mb: chromeStats.ram_mb,
         },
         screenshots: result.screenshots || [],
+        events: result.events || [],
         attempt,
       });
 

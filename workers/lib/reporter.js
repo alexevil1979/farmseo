@@ -42,6 +42,14 @@ function createReporter({ config, redis }) {
     if (result.attempt != null) {
       body.attempt = Number(result.attempt);
     }
+    if (Array.isArray(result.events) && result.events.length) {
+      body.events = result.events.slice(0, 500).map((ev) => ({
+        event: String(ev.event || ev.name || 'event'),
+        level: String(ev.level || 'info'),
+        message: ev.message == null ? null : String(ev.message).slice(0, 1000),
+        data: ev.data && typeof ev.data === 'object' ? ev.data : undefined,
+      }));
+    }
     return body;
   }
 

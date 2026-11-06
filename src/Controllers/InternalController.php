@@ -117,13 +117,44 @@ final class InternalController
             $runData['finished_at'] = $now;
         }
         if ($existingRun === null) {
-            $runs->create(array_merge($runData, [
+            $runId = $runs->create(array_merge($runData, [
                 'task_id' => $taskId,
                 'attempt' => $attempt,
                 'started_at' => $now,
             ]));
         } else {
-            $runs->update((int) $existingRun['id'], $runData);
+            $runId = (int) $existingRun['id'];
+            $runs->update($runId, $runData);
+        }
+
+        // Persist step events from worker (optional; UI shows them under task detail).
+        if ($runId > 0 && isset($body['events']) && is_array($body['events']) && $body['events'] !== []) {
+            $eventsRepo = new \Farm\Repositories\RunsEventRepository($this->factory->db());
+            $existingCount = count($eventsRepo->findByTaskRun($runId));
+            // Avoid duplicating on repeated terminal reports for the same attempt.
+            if ($existingCount === 0) {
+                foreach ($body['events'] as $ev) {
+                    if (!is_array($ev)) {
+                        continue;
+                    }
+                    $name = (string) ($ev['event'] ?? $ev['name'] ?? '');
+                    if ($name === '') {
+                        continue;
+                    }
+                    $level = (string) ($ev['level'] ?? 'info');
+                    $message = isset($ev['message']) ? (string) $ev['message'] : null;
+                    $data = null;
+                    if (isset($ev['data']) && is_array($ev['data'])) {
+                        $data = $ev['data'];
+                    } elseif (isset($ev['payload']) && is_array($ev['payload'])) {
+                        $data = $ev['payload'];
+                    }
+                    try {
+                        $eventsRepo->append($runId, $name, $level, $message, $data);
+                    } catch (Throwable) {
+                    }
+                }
+            }
         }
 
         $metricsRepo = new MetricRepository($this->factory->db());

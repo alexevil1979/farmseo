@@ -333,6 +333,77 @@ final class TasksController extends BaseController
         return ['tasks' => $out, 'accepted' => $accepted, 'deferred' => $deferred];
     }
 
+    /** Task run attempts (screenshots, metrics, status). */
+    public function runs(Request $request, string $id): Response
+    {
+        $taskId = (int) $id;
+        $task = $this->factory->taskRepository()->findById($taskId);
+        if ($task === null) {
+            throw new HttpException('not_found', 'Task not found', 404);
+        }
+
+        $runs = new \Farm\Repositories\TaskRunRepository($this->factory->db());
+        $out = [];
+        foreach ($runs->findByTask($taskId) as $run) {
+            $shots = $run['screenshots'] ?? [];
+            if (is_string($shots)) {
+                $decoded = json_decode($shots, true);
+                $shots = is_array($decoded) ? $decoded : [];
+            }
+            if (!is_array($shots)) {
+                $shots = [];
+            }
+            $normalized = [];
+            foreach ($shots as $shot) {
+                if (is_string($shot) && $shot !== '') {
+                    $rel = ltrim(str_replace('\\', '/', $shot), '/');
+                    if (str_starts_with($rel, 'storage/screenshots/')) {
+                        $path = '/' . $rel;
+                    } else {
+                        $path = '/storage/screenshots/' . $rel;
+                    }
+                    $normalized[] = [
+                        'path' => $path,
+                        'filename' => basename($rel),
+                    ];
+                } elseif (is_array($shot)) {
+                    $raw = (string) ($shot['path'] ?? $shot['filename'] ?? '');
+                    if ($raw === '') {
+                        continue;
+                    }
+                    $rel = ltrim(str_replace('\\', '/', $raw), '/');
+                    if (!str_starts_with($rel, 'storage/') && !str_starts_with($rel, 'http')) {
+                        $rel = 'storage/screenshots/' . $rel;
+                    }
+                    $path = str_starts_with($rel, 'http') ? $rel : '/' . ltrim($rel, '/');
+                    $normalized[] = [
+                        'path' => $path,
+                        'filename' => (string) ($shot['filename'] ?? basename(parse_url($path, PHP_URL_PATH) ?: $path)),
+                    ];
+                }
+            }
+            $metrics = $run['metrics'] ?? [];
+            if (is_string($metrics)) {
+                $decoded = json_decode($metrics, true);
+                $metrics = is_array($decoded) ? $decoded : [];
+            }
+            $out[] = [
+                'id' => (int) ($run['id'] ?? 0),
+                'task_id' => $taskId,
+                'attempt' => (int) ($run['attempt'] ?? 0),
+                'status' => $run['status'] ?? null,
+                'error' => $run['error'] ?? null,
+                'worker_id' => $run['worker_id'] ?? null,
+                'metrics' => is_array($metrics) ? $metrics : [],
+                'screenshots' => $normalized,
+                'started_at' => $run['started_at'] ?? null,
+                'finished_at' => $run['finished_at'] ?? null,
+            ];
+        }
+
+        return Response::json(['data' => $out]);
+    }
+
     /** Task run events for panel reports. */
     public function events(Request $request, string $id): Response
     {

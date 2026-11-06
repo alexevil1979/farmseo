@@ -25,7 +25,7 @@ export async function renderTasks(root, { id } = {}) {
     ...TYPES.map((s) => el('option', { value: s, text: s })),
   ]);
   const createBtn = el('button', { class: 'btn btn-primary', type: 'button', text: '+ Задача' });
-  const retryBtn = el('button', { class: 'btn', type: 'button', text: 'Повтор выбранных' });
+  const retryBtn = el('button', { class: 'btn', type: 'button', text: 'Повтор отмеченных' });
 
   const toolbar = el('div', { class: 'toolbar' }, [
     statusSel, typeSel, el('span', { class: 'spacer' }), retryBtn, createBtn,
@@ -137,26 +137,50 @@ async function renderTaskDetail(root, id) {
   root.innerHTML = '';
   const res = await Api.getOne('tasks', id);
   const task = res.data;
-  const runs = await Api.tryGet(`/tasks/${id}/runs`);
-  const events = await Api.tryGet(`/tasks/${id}/events`);
+  const runsRes = await Api.tryGet(`/tasks/${id}/runs`);
+  const eventsRes = await Api.tryGet(`/tasks/${id}/events`);
+  const runs = Array.isArray(runsRes?.data) ? runsRes.data : [];
+  const events = Array.isArray(eventsRes?.data) ? eventsRes.data : [];
+  const shots = collectShots(runs);
+  const accountId = task.account_id;
+  const isLive = ['running', 'queued', 'pending'].includes(String(task.status || ''));
+
+  const toolbarKids = [
+    el('button', { class: 'btn btn-sm', type: 'button', text: '← Назад', onClick: () => navigate('tasks') }),
+    el('strong', { html: `Task #${id} ${badge(task.status)}` }),
+    el('span', { class: 'spacer' }),
+  ];
+  if (accountId) {
+    toolbarKids.push(el('button', {
+      class: `btn btn-sm ${isLive ? 'btn-primary' : ''}`,
+      type: 'button',
+      text: isLive ? '● Live-view (сейчас)' : 'Live-view',
+      title: 'Открыть noVNC экрана аккаунта. Смотреть нужно пока задача running.',
+      onClick: () => {
+        window.open(`live-view/?account_id=${encodeURIComponent(accountId)}`, '_blank', 'noopener');
+      },
+    }));
+    toolbarKids.push(el('button', {
+      class: 'btn btn-sm',
+      type: 'button',
+      text: 'Аккаунт',
+      onClick: () => navigate(`accounts/${accountId}`),
+    }));
+  }
+  toolbarKids.push(el('button', {
+    class: 'btn btn-sm',
+    type: 'button',
+    text: 'Повтор',
+    onClick: async () => {
+      await Api.update('tasks', id, { status: 'pending', attempts: 0 });
+      toast('pending — открой Live-view и жди running');
+      navigate(`tasks/${id}`);
+      location.reload();
+    },
+  }));
 
   root.append(
-    el('div', { class: 'toolbar' }, [
-      el('button', { class: 'btn btn-sm', type: 'button', text: '← Назад', onClick: () => navigate('tasks') }),
-      el('strong', { html: `Task #${id} ${badge(task.status)}` }),
-      el('span', { class: 'spacer' }),
-      el('button', {
-        class: 'btn btn-sm',
-        type: 'button',
-        text: 'Повтор',
-        onClick: async () => {
-          await Api.update('tasks', id, { status: 'pending' });
-          toast('pending');
-          navigate(`tasks/${id}`);
-          location.reload();
-        },
-      }),
-    ]),
+    el('div', { class: 'toolbar' }, toolbarKids),
     el('div', { class: 'grid-2' }, [
       el('div', { class: 'panel' }, [
         el('h3', { text: 'Детали' }),
@@ -175,17 +199,107 @@ async function renderTaskDetail(root, id) {
         }),
         el('h3', { text: 'Payload', style: { marginTop: '16px' } }),
         el('pre', { class: 'json-preview', text: JSON.stringify(task.payload || {}, null, 2) }),
+        ...renderRunsMeta(runs),
       ]),
       el('div', { class: 'panel' }, [
-        el('h3', { text: 'Логи по шагам / events' }),
-        renderEvents(events?.data || runs?.data || []),
+        el('h3', { text: 'Скриншоты' }),
+        renderShots(shots),
+        el('p', {
+          class: 'muted',
+          style: { marginTop: '8px', fontSize: '12px' },
+          text: 'Live (VNC): кнопка Live-view сверху — открывать пока статус running. После done экран гаснет; остаётся скрин.',
+        }),
+        el('h3', { text: 'Логи по шагам / events', style: { marginTop: '16px' } }),
+        renderEvents(events),
       ]),
     ]),
   );
+
+  // Auto-refresh while task is still moving so Live button / shots update.
+  if (isLive) {
+    const t = setTimeout(() => {
+      if (location.hash.includes(`tasks/${id}`)) location.reload();
+    }, 5000);
+    return () => clearTimeout(t);
+  }
+  return undefined;
+}
+
+function collectShots(runs) {
+  const out = [];
+  for (const run of runs) {
+    for (const s of (run.screenshots || [])) {
+      out.push({
+        ...s,
+        attempt: run.attempt,
+        run_id: run.id,
+      });
+    }
+  }
+  return out;
+}
+
+function renderShots(shots) {
+  if (!shots.length) {
+    return el('div', {
+      class: 'empty',
+      text: 'Скриншотов пока нет (появятся после шага screenshot / конца сценария)',
+    });
+  }
+  const wrap = el('div', { class: 'screenshot-grid' });
+  wrap.innerHTML = shots.map((s) => {
+    const src = s.path || '';
+    const cap = s.filename || src;
+    const attempt = s.attempt != null ? ` · try ${s.attempt}` : '';
+    return `<figure>
+      <a href="${escapeHtml(src)}" target="_blank" rel="noopener">
+        <img src="${escapeHtml(src)}" alt="" loading="lazy" onerror="this.style.opacity=.25;this.closest('figure').dataset.miss=1"/>
+      </a>
+      <figcaption>${escapeHtml(cap)}${escapeHtml(attempt)}</figcaption>
+    </figure>`;
+  }).join('');
+  return wrap;
+}
+
+function renderRunsMeta(runs) {
+  if (!runs.length) return [];
+  const latest = runs[runs.length - 1];
+  const metrics = latest.metrics || {};
+  return [
+    el('h3', { text: 'Runs', style: { marginTop: '16px' } }),
+    el('div', { class: 'table-wrap' }, [
+      (() => {
+        const wrap = el('div');
+        wrap.innerHTML = `<table class="data"><thead><tr>
+          <th>Try</th><th>Status</th><th>Worker</th><th>Started</th><th>Finished</th><th>Shots</th>
+        </tr></thead><tbody>${runs.map((r) => `<tr>
+          <td class="mono">${r.attempt}</td>
+          <td>${badge(r.status)}</td>
+          <td class="mono">${escapeHtml(r.worker_id || '—')}</td>
+          <td class="mono">${fmtDate(r.started_at)}</td>
+          <td class="mono">${fmtDate(r.finished_at)}</td>
+          <td class="mono">${(r.screenshots || []).length}</td>
+        </tr>`).join('')}</tbody></table>`;
+        return wrap;
+      })(),
+    ]),
+    Object.keys(metrics).length
+      ? el('pre', {
+        class: 'json-preview',
+        style: { marginTop: '8px' },
+        text: JSON.stringify(metrics, null, 2),
+      })
+      : null,
+  ].filter(Boolean);
 }
 
 function renderEvents(rows) {
-  if (!rows.length) return el('div', { class: 'empty', text: 'Нет runs_events (GET /tasks/{id}/events)' });
+  if (!rows.length) {
+    return el('div', {
+      class: 'empty',
+      text: 'Нет runs_events — появятся у новых прогонов после обновления воркера',
+    });
+  }
   const wrap = el('div', { class: 'table-wrap' });
   wrap.innerHTML = `<table class="data"><thead><tr>
     <th>Time</th><th>Level</th><th>Event</th><th>Message</th>
