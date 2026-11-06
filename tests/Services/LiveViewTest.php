@@ -26,7 +26,7 @@ final class LiveViewTest extends TestCase
         );
 
         self::assertSame(
-            '/live/42/vnc.html?autoconnect=1&resize=scale',
+            '/live/42/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=live%2F42%2F',
             $live->streamUrl(42)
         );
     }

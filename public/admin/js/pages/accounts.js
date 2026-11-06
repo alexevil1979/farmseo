@@ -550,7 +550,7 @@ async function renderAccountDetail(root, id) {
     } else if (activeTab === 'live') {
       const url = sessions.find((s) => s.novnc_url && (s.status === 'active' || s.status === 'starting'))?.novnc_url
         || sessions.find((s) => s.novnc_url)?.novnc_url
-        || `/live/${id}/vnc.html?autoconnect=1&resize=scale`;
+        || `/live/${id}/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=${encodeURIComponent(`live/${id}/`)}`;
       pane.innerHTML = '';
       const openBtn = el('button', {
         class: 'btn btn-sm btn-primary',

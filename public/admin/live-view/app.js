@@ -39,7 +39,7 @@ async function startLive() {
   setStatus('Запуск сессии / VNC…');
   const res = await Api.startSession(accountId);
   const data = res.data || res;
-  const url = data.novnc_url || `/live/${accountId}/vnc.html?autoconnect=1&resize=scale`;
+  const url = data.novnc_url || `/live/${accountId}/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=${encodeURIComponent(`live/${accountId}/`)}`;
   el.meta.textContent = `account #${accountId}`
     + (data.vnc_port != null ? ` · vnc ${data.vnc_port}` : '')
     + (data.ws_port != null ? ` · ws ${data.ws_port}` : '')

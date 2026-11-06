@@ -150,7 +150,11 @@ final class LiveView
      */
     public function streamUrl(int $accountId): string
     {
-        return '/live/' . $accountId . '/vnc.html?autoconnect=1&resize=scale';
+        // Stock noVNC connects to wss://host/<path>; default path "websockify"
+        // would hit /websockify (404). Point path at our /live/{id}/ proxy.
+        $path = rawurlencode('live/' . $accountId . '/');
+
+        return '/live/' . $accountId . '/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=' . $path;
     }
 
     /**

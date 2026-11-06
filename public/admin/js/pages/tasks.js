@@ -225,16 +225,36 @@ async function renderTaskDetail(root, id) {
   let hbTimer = 0;
 
   function vncUrlFor(accId) {
-    return `/live/${accId}/vnc.html?autoconnect=1&resize=scale&reconnect=1`;
+    // noVNC builds wss://host/<path>; must be live/{id}/ not bare "websockify"
+    const path = encodeURIComponent(`live/${accId}/`);
+    return `/live/${accId}/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=${path}`;
+  }
+
+  /** Force correct WS path even if API returns a stale novnc_url. */
+  function normalizeNovncUrl(accId, raw) {
+    const fallback = vncUrlFor(accId);
+    if (!raw || typeof raw !== 'string') return fallback;
+    try {
+      const u = new URL(raw, window.location.origin);
+      if (!u.pathname.includes(`/live/${accId}/`)) return fallback;
+      u.searchParams.set('path', `live/${accId}/`);
+      u.searchParams.set('autoconnect', '1');
+      u.searchParams.set('resize', 'scale');
+      u.searchParams.set('reconnect', 'true');
+      return `${u.pathname}?${u.searchParams.toString()}`;
+    } catch {
+      return fallback;
+    }
   }
 
   let ensureInflight = null;
 
   function bindIframe(accId, url, force = false) {
-    if (!force && boundVncUrl === url && vncFrame.getAttribute('src') === url) return;
-    boundVncUrl = url;
-    if (vncFrame.getAttribute('src') !== url) {
-      vncFrame.setAttribute('src', url);
+    const finalUrl = normalizeNovncUrl(accId, url);
+    if (!force && boundVncUrl === finalUrl && vncFrame.getAttribute('src') === finalUrl) return;
+    boundVncUrl = finalUrl;
+    if (vncFrame.getAttribute('src') !== finalUrl) {
+      vncFrame.setAttribute('src', finalUrl);
     }
     liveStatus.textContent = `VNC: account #${accId}`;
     popoutBtn.disabled = false;
@@ -257,7 +277,7 @@ async function renderTaskDetail(root, id) {
         const res = await Api.startSession(accId);
         const data = res.data || res;
         const novnc = data.novnc_url || data.novnc_path || url;
-        bindIframe(accId, novnc.startsWith('/') || novnc.startsWith('http') ? novnc : url, force);
+        bindIframe(accId, novnc, force);
       } catch (e) {
         // Task may already own the display — try direct /live even if session API failed
         bindIframe(accId, url, force);

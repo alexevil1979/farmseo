@@ -176,8 +176,9 @@ function createDisplayManager(config = {}) {
       offset: entry.offset,
       dry_run: entry.dryRun,
       started_at: entry.startedAt,
-      /** Panel-proxied noVNC path (Apache → worker → websockify). */
-      novnc_path: `/live/${entry.accountId}/vnc.html?autoconnect=1&resize=scale`,
+      // path=live/{id}/ is REQUIRED: stock noVNC builds wss://host/<path>
+      // and defaults to /websockify (404 behind our /live/ proxy).
+      novnc_path: `/live/${entry.accountId}/vnc.html?autoconnect=1&resize=scale&reconnect=true&path=${encodeURIComponent(`live/${entry.accountId}/`)}`,
     };
   }
 
