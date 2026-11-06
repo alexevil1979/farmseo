@@ -7,6 +7,7 @@ import { navigate } from '../router.js';
 
 const STATUSES = ['pending', 'queued', 'running', 'done', 'failed', 'retrying', 'cancelled'];
 const TYPES = ['register', 'warmup', 'pf', 'service', 'check'];
+const LIVE_STATUSES = new Set(['running', 'queued', 'pending', 'retrying']);
 
 export async function renderTasks(root, { id } = {}) {
   if (id) return renderTaskDetail(root, id);
@@ -133,96 +134,231 @@ function openTaskForm(onDone) {
   };
 }
 
+/**
+ * Task detail with embedded noVNC.
+ * Shell DOM is built once; polls only patch text/tables — iframe never remounts.
+ */
 async function renderTaskDetail(root, id) {
   root.innerHTML = '';
-  const res = await Api.getOne('tasks', id);
-  const task = res.data;
-  const runsRes = await Api.tryGet(`/tasks/${id}/runs`);
-  const eventsRes = await Api.tryGet(`/tasks/${id}/events`);
-  const runs = Array.isArray(runsRes?.data) ? runsRes.data : [];
-  const events = Array.isArray(eventsRes?.data) ? eventsRes.data : [];
-  const shots = collectShots(runs);
-  const accountId = task.account_id;
-  const isLive = ['running', 'queued', 'pending'].includes(String(task.status || ''));
 
-  const toolbarKids = [
+  const titleEl = el('strong', { html: `Task #${id}` });
+  const liveHint = el('span', { class: 'muted task-live-hint', text: '' });
+  const toolbar = el('div', { class: 'toolbar' }, [
     el('button', { class: 'btn btn-sm', type: 'button', text: '← Назад', onClick: () => navigate('tasks') }),
-    el('strong', { html: `Task #${id} ${badge(task.status)}` }),
+    titleEl,
     el('span', { class: 'spacer' }),
-  ];
-  if (accountId) {
-    toolbarKids.push(el('button', {
-      class: `btn btn-sm ${isLive ? 'btn-primary' : ''}`,
-      type: 'button',
-      text: isLive ? '● Live-view (сейчас)' : 'Live-view',
-      title: 'Открыть noVNC экрана аккаунта. Смотреть нужно пока задача running.',
-      onClick: () => {
-        window.open(`live-view/?account_id=${encodeURIComponent(accountId)}`, '_blank', 'noopener');
-      },
-    }));
-    toolbarKids.push(el('button', {
-      class: 'btn btn-sm',
-      type: 'button',
-      text: 'Аккаунт',
-      onClick: () => navigate(`accounts/${accountId}`),
-    }));
-  }
-  toolbarKids.push(el('button', {
+    liveHint,
+  ]);
+
+  const detailsBox = el('div', { class: 'task-details-box' });
+  const payloadBox = el('pre', { class: 'json-preview' });
+  const runsBox = el('div', { class: 'task-runs-box' });
+  const leftPanel = el('div', { class: 'panel' }, [
+    el('h3', { text: 'Детали' }),
+    detailsBox,
+    el('h3', { text: 'Payload', style: { marginTop: '16px' } }),
+    payloadBox,
+    runsBox,
+  ]);
+
+  const liveStatus = el('span', { class: 'muted mono task-vnc-status', text: 'VNC: —' });
+  const vncFrame = el('iframe', {
+    class: 'live-view-frame task-vnc-frame',
+    title: 'Live VNC',
+    allow: 'clipboard-read; clipboard-write',
+    // about:blank until we know account + want stream; never recreate the node
+    src: 'about:blank',
+  });
+  const shotsBox = el('div', { class: 'task-shots-box' });
+  const eventsBox = el('div', { class: 'task-events-box' });
+
+  const popoutBtn = el('button', {
+    class: 'btn btn-sm',
+    type: 'button',
+    text: 'В окне',
+    disabled: true,
+  });
+  const reconnectBtn = el('button', {
+    class: 'btn btn-sm',
+    type: 'button',
+    text: 'Переподключить VNC',
+  });
+  const accountBtn = el('button', {
+    class: 'btn btn-sm',
+    type: 'button',
+    text: 'Аккаунт',
+    disabled: true,
+  });
+  const retryBtn = el('button', {
     class: 'btn btn-sm',
     type: 'button',
     text: 'Повтор',
-    onClick: async () => {
-      await Api.update('tasks', id, { status: 'pending', attempts: 0 });
-      toast('pending — открой Live-view и жди running');
-      navigate(`tasks/${id}`);
-      location.reload();
-    },
-  }));
+  });
 
-  root.append(
-    el('div', { class: 'toolbar' }, toolbarKids),
-    el('div', { class: 'grid-2' }, [
-      el('div', { class: 'panel' }, [
-        el('h3', { text: 'Детали' }),
-        el('dl', {
-          class: 'kv',
-          html: `
-            <dt>Type</dt><dd>${badge(task.type)}</dd>
-            <dt>Priority</dt><dd class="mono">${task.priority}</dd>
-            <dt>Account</dt><dd class="mono">${task.account_id ?? '—'}</dd>
-            <dt>Scenario</dt><dd class="mono">${task.scenario_id ?? '—'}</dd>
-            <dt>Attempts</dt><dd class="mono">${task.attempts}/${task.max_attempts}</dd>
-            <dt>Scheduled</dt><dd class="mono">${fmtDate(task.scheduled_at)}</dd>
-            <dt>Started</dt><dd class="mono">${fmtDate(task.started_at)}</dd>
-            <dt>Finished</dt><dd class="mono">${fmtDate(task.finished_at)}</dd>
-            <dt>Error</dt><dd class="err-text">${escapeHtml(task.error || '—')}</dd>`,
-        }),
-        el('h3', { text: 'Payload', style: { marginTop: '16px' } }),
-        el('pre', { class: 'json-preview', text: JSON.stringify(task.payload || {}, null, 2) }),
-        ...renderRunsMeta(runs),
-      ]),
-      el('div', { class: 'panel' }, [
-        el('h3', { text: 'Скриншоты' }),
-        renderShots(shots),
-        el('p', {
-          class: 'muted',
-          style: { marginTop: '8px', fontSize: '12px' },
-          text: 'Live (VNC): кнопка Live-view сверху — открывать пока статус running. После done экран гаснет; остаётся скрин.',
-        }),
-        el('h3', { text: 'Логи по шагам / events', style: { marginTop: '16px' } }),
-        renderEvents(events),
-      ]),
+  toolbar.append(popoutBtn, accountBtn, reconnectBtn, retryBtn);
+
+  const rightPanel = el('div', { class: 'panel task-live-panel' }, [
+    el('div', { class: 'task-vnc-head' }, [
+      el('h3', { text: 'Live-view (VNC)', style: { margin: 0 } }),
+      liveStatus,
     ]),
-  );
+    vncFrame,
+    el('p', {
+      class: 'muted',
+      style: { marginTop: '8px', fontSize: '12px' },
+      text: 'Экран обновляется сам. Статус/логи справа снизу — без перезагрузки страницы, VNC не дёргается.',
+    }),
+    el('h3', { text: 'Скриншоты', style: { marginTop: '16px' } }),
+    shotsBox,
+    el('h3', { text: 'Логи по шагам / events', style: { marginTop: '16px' } }),
+    eventsBox,
+  ]);
 
-  // Auto-refresh while task is still moving so Live button / shots update.
-  if (isLive) {
-    const t = setTimeout(() => {
-      if (location.hash.includes(`tasks/${id}`)) location.reload();
-    }, 5000);
-    return () => clearTimeout(t);
+  root.append(toolbar, el('div', { class: 'grid-2 task-detail-grid' }, [leftPanel, rightPanel]));
+
+  /** @type {number|null} */
+  let accountId = null;
+  /** @type {string} */
+  let boundVncUrl = '';
+  let stopped = false;
+  let pollTimer = 0;
+  let hbTimer = 0;
+
+  function vncUrlFor(accId) {
+    return `/live/${accId}/vnc.html?autoconnect=1&resize=scale&reconnect=1`;
   }
-  return undefined;
+
+  function connectVnc(accId, force = false) {
+    if (!accId) return;
+    const url = vncUrlFor(accId);
+    if (!force && boundVncUrl === url && vncFrame.getAttribute('src') === url) return;
+    boundVncUrl = url;
+    // Only assign src when changed — avoids iframe reload flicker
+    if (vncFrame.getAttribute('src') !== url) {
+      vncFrame.setAttribute('src', url);
+    }
+    liveStatus.textContent = `VNC: account #${accId}`;
+    popoutBtn.disabled = false;
+  }
+
+  function disconnectVnc(reason) {
+    // Keep last frame painted; don't blank unless leaving the page
+    liveStatus.textContent = reason || 'VNC: нет активного экрана';
+  }
+
+  popoutBtn.onclick = () => {
+    if (!accountId) return;
+    window.open(`live-view/?account_id=${encodeURIComponent(accountId)}`, '_blank', 'noopener');
+  };
+  reconnectBtn.onclick = () => {
+    if (!accountId) {
+      toast('Нет account_id у задачи', 'warn');
+      return;
+    }
+    // Force remount stream once (user-initiated)
+    vncFrame.setAttribute('src', 'about:blank');
+    boundVncUrl = '';
+    setTimeout(() => connectVnc(accountId, true), 50);
+    toast('VNC переподключаю');
+  };
+  accountBtn.onclick = () => {
+    if (accountId) navigate(`accounts/${accountId}`);
+  };
+  retryBtn.onclick = async () => {
+    try {
+      await Api.update('tasks', id, { status: 'pending', attempts: 0 });
+      toast('pending');
+      await refresh(false);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  };
+
+  function paint(task, runs, events) {
+    const st = String(task.status || '');
+    titleEl.innerHTML = `Task #${id} ${badge(st)}`;
+    liveHint.textContent = LIVE_STATUSES.has(st)
+      ? '· идёт / в очереди — смотри VNC справа'
+      : '';
+
+    accountId = task.account_id != null ? Number(task.account_id) : null;
+    accountBtn.disabled = !accountId;
+
+    detailsBox.innerHTML = `<dl class="kv">
+      <dt>Type</dt><dd>${badge(task.type)}</dd>
+      <dt>Priority</dt><dd class="mono">${task.priority}</dd>
+      <dt>Account</dt><dd class="mono">${task.account_id ?? '—'}</dd>
+      <dt>Scenario</dt><dd class="mono">${task.scenario_id ?? '—'}</dd>
+      <dt>Attempts</dt><dd class="mono">${task.attempts}/${task.max_attempts}</dd>
+      <dt>Scheduled</dt><dd class="mono">${fmtDate(task.scheduled_at)}</dd>
+      <dt>Started</dt><dd class="mono">${fmtDate(task.started_at)}</dd>
+      <dt>Finished</dt><dd class="mono">${fmtDate(task.finished_at)}</dd>
+      <dt>Error</dt><dd class="err-text">${escapeHtml(task.error || '—')}</dd>
+    </dl>`;
+
+    const payloadText = JSON.stringify(task.payload || {}, null, 2);
+    if (payloadBox.textContent !== payloadText) payloadBox.textContent = payloadText;
+
+    runsBox.innerHTML = '';
+    for (const node of renderRunsMeta(runs)) runsBox.append(node);
+
+    const shots = collectShots(runs);
+    shotsBox.innerHTML = '';
+    shotsBox.append(renderShots(shots));
+
+    eventsBox.innerHTML = '';
+    eventsBox.append(renderEvents(events));
+
+    // Attach VNC when we have an account. Prefer connecting while live/retrying;
+    // keep stream after done so user can still peek during keep-open window.
+    if (accountId) {
+      if (LIVE_STATUSES.has(st) || st === 'done' || st === 'failed') {
+        connectVnc(accountId);
+      } else {
+        disconnectVnc('VNC: ожидание запуска');
+      }
+    } else {
+      disconnectVnc('VNC: нет account_id');
+    }
+  }
+
+  async function refresh() {
+    if (stopped) return;
+    const res = await Api.getOne('tasks', id);
+    const task = res.data;
+    const runsRes = await Api.tryGet(`/tasks/${id}/runs`);
+    const eventsRes = await Api.tryGet(`/tasks/${id}/events`);
+    const runs = Array.isArray(runsRes?.data) ? runsRes.data : [];
+    const events = Array.isArray(eventsRes?.data) ? eventsRes.data : [];
+    paint(task, runs, events);
+
+    // Soft touch so idle GC does not kill display while this page is open
+    if (accountId && LIVE_STATUSES.has(String(task.status || ''))) {
+      Api.liveView(accountId).catch(() => {});
+    }
+    return task;
+  }
+
+  await refresh();
+
+  pollTimer = setInterval(() => {
+    if (stopped) return;
+    if (!location.hash.includes(`tasks/${id}`)) return;
+    refresh().catch(() => {});
+  }, 4000);
+
+  hbTimer = setInterval(() => {
+    if (stopped || !accountId) return;
+    Api.liveView(accountId).catch(() => {});
+  }, 60000);
+
+  return () => {
+    stopped = true;
+    clearInterval(pollTimer);
+    clearInterval(hbTimer);
+    // Release iframe resources when leaving the route
+    try { vncFrame.setAttribute('src', 'about:blank'); } catch { /* ignore */ }
+  };
 }
 
 function collectShots(runs) {
@@ -265,24 +401,21 @@ function renderRunsMeta(runs) {
   if (!runs.length) return [];
   const latest = runs[runs.length - 1];
   const metrics = latest.metrics || {};
+  const tableWrap = el('div', { class: 'table-wrap' });
+  tableWrap.innerHTML = `<table class="data"><thead><tr>
+    <th>Try</th><th>Status</th><th>Worker</th><th>Started</th><th>Finished</th><th>Shots</th>
+  </tr></thead><tbody>${runs.map((r) => `<tr>
+    <td class="mono">${r.attempt}</td>
+    <td>${badge(r.status)}</td>
+    <td class="mono">${escapeHtml(r.worker_id || '—')}</td>
+    <td class="mono">${fmtDate(r.started_at)}</td>
+    <td class="mono">${fmtDate(r.finished_at)}</td>
+    <td class="mono">${(r.screenshots || []).length}</td>
+  </tr>`).join('')}</tbody></table>`;
+
   return [
     el('h3', { text: 'Runs', style: { marginTop: '16px' } }),
-    el('div', { class: 'table-wrap' }, [
-      (() => {
-        const wrap = el('div');
-        wrap.innerHTML = `<table class="data"><thead><tr>
-          <th>Try</th><th>Status</th><th>Worker</th><th>Started</th><th>Finished</th><th>Shots</th>
-        </tr></thead><tbody>${runs.map((r) => `<tr>
-          <td class="mono">${r.attempt}</td>
-          <td>${badge(r.status)}</td>
-          <td class="mono">${escapeHtml(r.worker_id || '—')}</td>
-          <td class="mono">${fmtDate(r.started_at)}</td>
-          <td class="mono">${fmtDate(r.finished_at)}</td>
-          <td class="mono">${(r.screenshots || []).length}</td>
-        </tr>`).join('')}</tbody></table>`;
-        return wrap;
-      })(),
-    ]),
+    tableWrap,
     Object.keys(metrics).length
       ? el('pre', {
         class: 'json-preview',

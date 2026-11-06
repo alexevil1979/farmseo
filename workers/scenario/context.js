@@ -152,6 +152,14 @@ function createContext(opts) {
 
     async screenshot(name) {
       const taskId = vars.task_id;
+      // Recover page if prior step detached/closed the tab (fail shots otherwise vanish).
+      try {
+        const { ensureLivePage } = require('./steps/_helpers');
+        await ensureLivePage(ctx);
+      } catch (err) {
+        console.warn('[scenario] screenshot: no live page:', err.message);
+        return null;
+      }
       if (!activePage) return null;
       const take = async () => {
         let rel = null;

@@ -1,6 +1,6 @@
 'use strict';
 
-const { waitReady, humanType, findFirst } = require('./_helpers');
+const { waitReady, humanType, findFirst, safeGoto, ensureLivePage } = require('./_helpers');
 const { rand } = require('../random');
 
 const INPUT_SELECTORS = [
@@ -22,17 +22,16 @@ async function search_yandex(step, ctx) {
 
   const navTimeout = (step.timeout_sec || (ctx.preferMin ? 25 : 60)) * 1000;
   const start = step.url || 'https://yandex.ru/';
+  await ensureLivePage(ctx);
   if (!/yandex\.(ru|com)|ya\.ru/i.test(ctx.page.url())) {
-    await ctx.page.goto(start, { waitUntil: 'domcontentloaded', timeout: navTimeout });
-    await waitReady(ctx.page, Math.min(navTimeout, 15000));
+    await safeGoto(ctx, start, { timeout: navTimeout, retries: 2 });
   }
 
   const found = await findFirst(ctx.page, step.selector ? [step.selector] : INPUT_SELECTORS);
   if (!found) {
     // fallback: navigate via search URL
     const u = `https://yandex.ru/search/?text=${encodeURIComponent(query)}`;
-    await ctx.page.goto(u, { waitUntil: 'domcontentloaded', timeout: navTimeout });
-    await waitReady(ctx.page, Math.min(navTimeout, 15000));
+    await safeGoto(ctx, u, { timeout: navTimeout, retries: 1 });
     ctx.set('query', query);
     ctx.set('url', ctx.page.url());
     return { query, via: 'url' };

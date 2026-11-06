@@ -156,31 +156,35 @@ async function setupProxyAuth(page, browser, proxy) {
     password: proxy.password || '',
   });
 
-  try {
-    const client = await page.createCDPSession();
-    await client.send('Fetch.enable', {
-      handleAuthRequests: true,
-      patterns: [{ urlPattern: '*' }],
-    });
-    client.on('Fetch.authRequired', async (event) => {
-      try {
-        await client.send('Fetch.continueWithAuth', {
-          requestId: event.requestId,
-          authChallengeResponse: {
-            response: 'ProvideCredentials',
-            username: proxy.username || '',
-            password: proxy.password || '',
-          },
-        });
-      } catch (_) { /* ignore */ }
-    });
-    client.on('Fetch.requestPaused', async (event) => {
-      try {
-        await client.send('Fetch.continueRequest', { requestId: event.requestId });
-      } catch (_) { /* ignore */ }
-    });
-  } catch (_) {
-    // page.authenticate is enough for most HTTP proxies
+  // Fetch CDP interception frequently triggers "detached Frame" during navigations.
+  // Opt-in only: PROXY_FETCH_AUTH=1. page.authenticate covers most HTTP proxies.
+  if (process.env.PROXY_FETCH_AUTH === '1' || process.env.PROXY_FETCH_AUTH === 'true') {
+    try {
+      const client = await page.createCDPSession();
+      await client.send('Fetch.enable', {
+        handleAuthRequests: true,
+        patterns: [{ urlPattern: '*' }],
+      });
+      client.on('Fetch.authRequired', async (event) => {
+        try {
+          await client.send('Fetch.continueWithAuth', {
+            requestId: event.requestId,
+            authChallengeResponse: {
+              response: 'ProvideCredentials',
+              username: proxy.username || '',
+              password: proxy.password || '',
+            },
+          });
+        } catch (_) { /* ignore */ }
+      });
+      client.on('Fetch.requestPaused', async (event) => {
+        try {
+          await client.send('Fetch.continueRequest', { requestId: event.requestId });
+        } catch (_) { /* ignore */ }
+      });
+    } catch (_) {
+      // page.authenticate is enough for most HTTP proxies
+    }
   }
 
   browser.on('targetcreated', async (target) => {

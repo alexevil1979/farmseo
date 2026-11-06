@@ -817,6 +817,37 @@ table.data td.mono,
   background: #000;
 }
 
+.task-detail-grid {
+  align-items: start;
+}
+
+.task-live-panel {
+  min-width: 0;
+}
+
+.task-vnc-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.task-vnc-frame {
+  min-height: 480px;
+  height: min(62vh, 640px);
+  background: #0a0a0a;
+}
+
+.task-live-hint {
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.task-vnc-status {
+  font-size: 12px;
+}
+
 .steps-editor .step {
   display: grid;
   grid-template-columns: 64px minmax(110px, 0.7fr) minmax(160px, 1.4fr) 88px 110px 40px;
