@@ -819,10 +819,42 @@ table.data td.mono,
 
 .steps-editor .step {
   display: grid;
-  grid-template-columns: 40px 1fr 1fr 90px 100px 36px;
+  grid-template-columns: 64px minmax(110px, 0.7fr) minmax(160px, 1.4fr) 88px 110px 40px;
   gap: 8px;
   margin-bottom: 8px;
-  align-items: start;
+  align-items: center;
+}
+
+.steps-editor .step-head {
+  margin-bottom: 6px;
+  color: var(--text-mute);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.steps-editor .step-order {
+  text-align: center;
+  font-family: var(--mono);
+  font-weight: 600;
+  min-width: 56px;
+}
+
+.step-test-bar {
+  margin-top: 14px;
+  align-items: end;
+  gap: 12px;
+}
+
+.step-test-account {
+  flex: 1;
+  min-width: 220px;
+  margin: 0;
+}
+
+.step-account-select {
+  min-width: 260px;
+  width: 100%;
 }
 
 @media (max-width: 1200px) {

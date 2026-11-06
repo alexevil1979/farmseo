@@ -60,7 +60,7 @@ function openScenarioForm(existing, onDone) {
   const description = el('textarea', { class: 'textarea', text: existing?.description || '' });
   const defaults = el('textarea', {
     class: 'textarea',
-    text: JSON.stringify(existing?.defaults || {}, null, 2),
+    text: JSON.stringify(normalizeDefaults(existing?.defaults), null, 2),
   });
   const save = el('button', { class: 'btn btn-primary', type: 'button', text: 'Сохранить' });
   const ui = openModal({
@@ -78,6 +78,7 @@ function openScenarioForm(existing, onDone) {
   save.onclick = async () => {
     let defs = {};
     try { defs = JSON.parse(defaults.value || '{}'); } catch { toast('Невалидный JSON defaults', 'error'); return; }
+    defs = normalizeDefaults(defs);
     const payload = {
       name: name.value.trim(),
       type: type.value,
@@ -95,13 +96,50 @@ function openScenarioForm(existing, onDone) {
   };
 }
 
+function normalizeDefaults(raw) {
+  if (raw == null) return {};
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    // Guard against string-spread leftovers: { "0": "{", "1": "\"" ... }
+    const keys = Object.keys(raw);
+    if (keys.length && keys.every((k) => /^\d+$/.test(k)) && !('steps' in raw)) return {};
+    return { ...raw };
+  }
+  return {};
+}
+
+async function loadAccountOptions() {
+  try {
+    const res = await Api.list('accounts', { per_page: 200 });
+    return Array.isArray(res.data) ? res.data : [];
+  } catch {
+    return [];
+  }
+}
+
 async function renderEditor(root, id) {
   root.innerHTML = '';
   const res = await Api.getOne('scenarios', id);
   const scenario = res.data;
+  scenario.defaults = normalizeDefaults(scenario.defaults);
+
   const stepsHost = el('div', { class: 'steps-editor' });
   const preview = el('pre', { class: 'json-preview' });
-  const accountId = el('input', { class: 'input', placeholder: 'account_id для теста', type: 'number' });
+  const accounts = await loadAccountOptions();
+  const accountSelect = el('select', { class: 'select step-account-select' }, [
+    el('option', { value: '', text: accounts.length ? '— выберите аккаунт —' : 'Нет аккаунтов (создайте в «Аккаунты»)' }),
+    ...accounts.map((a) => el('option', {
+      value: String(a.id),
+      text: `#${a.id} · ${a.login || a.name || 'account'} · ${a.status || '?'}`,
+    })),
+  ]);
 
   let steps = Array.isArray(scenario.defaults?.steps) ? structuredClone(scenario.defaults.steps) : [];
   if (!steps.length) {
@@ -113,20 +151,36 @@ async function renderEditor(root, id) {
       id: scenario.id,
       name: scenario.name,
       type: scenario.type,
-      defaults: { ...(scenario.defaults || {}), steps },
+      defaults: { ...normalizeDefaults(scenario.defaults), steps },
     };
     preview.textContent = JSON.stringify(doc, null, 2);
   }
 
   function renderSteps() {
     stepsHost.innerHTML = '';
+    stepsHost.append(el('div', { class: 'step step-head' }, [
+      el('span', { text: '№' }),
+      el('span', { text: 'Действие' }),
+      el('span', { text: 'Params (JSON)' }),
+      el('span', { text: 'Timeout' }),
+      el('span', { text: 'On fail' }),
+      el('span', { text: '' }),
+    ]));
+
     steps.forEach((step, idx) => {
-      const order = el('input', { class: 'input', type: 'number', value: step.step_order ?? idx + 1 });
+      const order = el('input', {
+        class: 'input step-order',
+        type: 'number',
+        min: '1',
+        value: String(step.step_order ?? idx + 1),
+        title: 'Номер шага',
+        'aria-label': 'Номер шага',
+      });
       const action = el('select', { class: 'select' }, ACTIONS.map((a) => el('option', {
         value: a, text: a, selected: step.action === a,
       })));
       const params = el('input', { class: 'input', value: JSON.stringify(step.params || {}) });
-      const timeout = el('input', { class: 'input', type: 'number', value: step.timeout_sec ?? 30 });
+      const timeout = el('input', { class: 'input', type: 'number', value: String(step.timeout_sec ?? 30) });
       const onFail = el('select', { class: 'select' }, ['abort', 'retry', 'continue'].map((v) => el('option', {
         value: v, text: v, selected: (step.on_fail || 'abort') === v,
       })));
@@ -134,6 +188,7 @@ async function renderEditor(root, id) {
         class: 'btn btn-sm btn-danger',
         type: 'button',
         text: '✕',
+        title: 'Удалить шаг',
         onClick: () => { steps.splice(idx, 1); renderSteps(); syncPreview(); },
       });
       const row = el('div', { class: 'step' }, [order, action, params, timeout, onFail, del]);
@@ -150,7 +205,7 @@ async function renderEditor(root, id) {
         syncPreview();
       };
       [order, action, params, timeout, onFail].forEach((n) => n.addEventListener('change', commit));
-      [params].forEach((n) => n.addEventListener('blur', commit));
+      params.addEventListener('blur', commit);
       stepsHost.append(row);
     });
     syncPreview();
@@ -177,25 +232,29 @@ async function renderEditor(root, id) {
       text: 'Сохранить шаги',
       onClick: async () => {
         try {
-          await Api.update('scenarios', id, {
-            defaults: { ...(scenario.defaults || {}), steps },
-          });
-          toast('Шаги сохранены в defaults');
+          const defaults = { ...normalizeDefaults(scenario.defaults), steps };
+          await Api.update('scenarios', id, { defaults });
+          scenario.defaults = defaults;
+          toast('Шаги сохранены');
+          syncPreview();
         } catch (e) { toast(e.message, 'error'); }
       },
     }),
   ]);
 
-  const testBar = el('div', { class: 'toolbar' }, [
-    accountId,
+  const testBar = el('div', { class: 'toolbar step-test-bar' }, [
+    el('div', { class: 'field step-test-account' }, [
+      el('label', { text: 'Аккаунт для теста' }),
+      accountSelect,
+    ]),
     el('button', {
       class: 'btn btn-primary',
       type: 'button',
       text: 'Тестовый прогон',
       onClick: async () => {
-        if (!accountId.value) { toast('Укажите account_id', 'warn'); return; }
+        if (!accountSelect.value) { toast('Выберите аккаунт из списка', 'warn'); return; }
         try {
-          const r = await Api.runScenario(id, { account_id: Number(accountId.value) });
+          const r = await Api.runScenario(id, { account_id: Number(accountSelect.value) });
           toast(`Task #${r.data?.task_id} → ${r.data?.status}`);
         } catch (e) { toast(e.message, 'error'); }
       },
