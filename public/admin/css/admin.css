@@ -1189,6 +1189,67 @@ table.data td.mono,
   font-size: 13px;
 }
 
+.docs-warn {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(232, 93, 93, 0.1);
+  border: 1px solid rgba(232, 93, 93, 0.35);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.docs-plain {
+  margin: 10px 0 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(62, 207, 142, 0.08);
+  border: 1px solid rgba(62, 207, 142, 0.28);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.docs-clicks-wrap {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px dashed var(--line);
+}
+
+.docs-clicks-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.docs-clicks {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.docs-clicks li {
+  margin-bottom: 4px;
+}
+
+.docs-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.docs-all-title {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 .docs-checklist {
   margin-top: 20px;
 }
