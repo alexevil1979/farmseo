@@ -228,12 +228,11 @@ async function renderTaskDetail(root, id) {
     return `/live/${accId}/vnc.html?autoconnect=1&resize=scale&reconnect=1`;
   }
 
-  function connectVnc(accId, force = false) {
-    if (!accId) return;
-    const url = vncUrlFor(accId);
+  let ensureInflight = null;
+
+  function bindIframe(accId, url, force = false) {
     if (!force && boundVncUrl === url && vncFrame.getAttribute('src') === url) return;
     boundVncUrl = url;
-    // Only assign src when changed — avoids iframe reload flicker
     if (vncFrame.getAttribute('src') !== url) {
       vncFrame.setAttribute('src', url);
     }
@@ -241,8 +240,36 @@ async function renderTaskDetail(root, id) {
     popoutBtn.disabled = false;
   }
 
+  /**
+   * Ensure display stack is up (reuses task display if running), then set iframe once.
+   */
+  async function ensureVnc(accId, force = false) {
+    if (!accId) return;
+    const url = vncUrlFor(accId);
+    if (!force && boundVncUrl === url && vncFrame.getAttribute('src') === url) {
+      Api.liveView(accId).catch(() => {});
+      return;
+    }
+    if (ensureInflight) return ensureInflight;
+    liveStatus.textContent = force ? 'VNC: переподключаю…' : 'VNC: поднимаю экран…';
+    ensureInflight = (async () => {
+      try {
+        const res = await Api.startSession(accId);
+        const data = res.data || res;
+        const novnc = data.novnc_url || data.novnc_path || url;
+        bindIframe(accId, novnc.startsWith('/') || novnc.startsWith('http') ? novnc : url, force);
+      } catch (e) {
+        // Task may already own the display — try direct /live even if session API failed
+        bindIframe(accId, url, force);
+        liveStatus.textContent = `VNC: account #${accId} (${e.message || 'direct'})`;
+      } finally {
+        ensureInflight = null;
+      }
+    })();
+    return ensureInflight;
+  }
+
   function disconnectVnc(reason) {
-    // Keep last frame painted; don't blank unless leaving the page
     liveStatus.textContent = reason || 'VNC: нет активного экрана';
   }
 
@@ -255,11 +282,9 @@ async function renderTaskDetail(root, id) {
       toast('Нет account_id у задачи', 'warn');
       return;
     }
-    // Force remount stream once (user-initiated)
     vncFrame.setAttribute('src', 'about:blank');
     boundVncUrl = '';
-    setTimeout(() => connectVnc(accountId, true), 50);
-    toast('VNC переподключаю');
+    ensureVnc(accountId, true).then(() => toast('VNC переподключил')).catch((e) => toast(e.message, 'error'));
   };
   accountBtn.onclick = () => {
     if (accountId) navigate(`accounts/${accountId}`);
@@ -309,11 +334,10 @@ async function renderTaskDetail(root, id) {
     eventsBox.innerHTML = '';
     eventsBox.append(renderEvents(events));
 
-    // Attach VNC when we have an account. Prefer connecting while live/retrying;
-    // keep stream after done so user can still peek during keep-open window.
+    // Attach VNC when we have an account. startSession reuses task display if any.
     if (accountId) {
       if (LIVE_STATUSES.has(st) || st === 'done' || st === 'failed') {
-        connectVnc(accountId);
+        ensureVnc(accountId).catch(() => {});
       } else {
         disconnectVnc('VNC: ожидание запуска');
       }

@@ -105,33 +105,42 @@ async function main() {
       ),
     }),
     async onSessionStart(accountId) {
-      const disp = await displays.start(accountId);
+      const id = Number(accountId);
+      const disp = await displays.start(id);
+      // Task slot already owns Chrome on this display — only expose VNC, do not
+      // launch a second profile (PROFILE_LOCKED / detached Frame races).
+      if (chromeProcs.has(id) || sessions.has(id)) {
+        return {
+          vnc_port: disp.vnc_port,
+          ws_port: disp.ws_port,
+          display: disp.display,
+          novnc_path: disp.novnc_path,
+        };
+      }
       try {
-        if (!sessions.has(accountId)) {
-          const launched = await launchBrowser({
-            accountId,
-            profilesRoot: config.storage.profiles,
-            headless: false,
-            display: disp.display,
-            executablePath: config.chromePath,
-            extraArgs: config.chromeExtraArgs || [],
-            lockOwner: `${config.workerId}:live${accountId}`,
-          });
-          sessions.set(accountId, {
-            browser: launched.browser,
-            releaseLock: launched.releaseLock,
-            interactive: true,
-          });
-          chromeCount += 1;
-          launched.browser.once('disconnected', () => {
-            if (sessions.get(accountId)?.browser === launched.browser) {
-              sessions.delete(accountId);
-              chromeCount = Math.max(0, chromeCount - 1);
-            }
-          });
-        }
+        const launched = await launchBrowser({
+          accountId: id,
+          profilesRoot: config.storage.profiles,
+          headless: false,
+          display: disp.display,
+          executablePath: config.chromePath,
+          extraArgs: config.chromeExtraArgs || [],
+          lockOwner: `${config.workerId}:live${id}`,
+        });
+        sessions.set(id, {
+          browser: launched.browser,
+          releaseLock: launched.releaseLock,
+          interactive: true,
+        });
+        chromeCount += 1;
+        launched.browser.once('disconnected', () => {
+          if (sessions.get(id)?.browser === launched.browser) {
+            sessions.delete(id);
+            chromeCount = Math.max(0, chromeCount - 1);
+          }
+        });
       } catch (err) {
-        await displays.stop(accountId).catch(() => {});
+        await displays.stop(id).catch(() => {});
         throw err;
       }
       return {
@@ -142,7 +151,12 @@ async function main() {
       };
     },
     async onSessionStop(accountId) {
-      const s = sessions.get(accountId);
+      const id = Number(accountId);
+      // Never tear down a display still owned by a running task slot.
+      if (chromeProcs.has(id)) {
+        return;
+      }
+      const s = sessions.get(id);
       if (s) {
         try {
           await s.browser.close();
@@ -150,10 +164,10 @@ async function main() {
         try {
           s.releaseLock();
         } catch (_) { /* ignore */ }
-        sessions.delete(accountId);
+        sessions.delete(id);
         chromeCount = Math.max(0, chromeCount - 1);
       }
-      await displays.stop(accountId);
+      await displays.stop(id);
     },
     async onScreenshot(accountId) {
       return takeAccountScreenshot(accountId, {
